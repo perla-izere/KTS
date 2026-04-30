@@ -117,8 +117,8 @@ const form = ref({ firstName: '', lastName: '', address: '', city: 'Kigali', pho
 const cardError = ref('')
 const processing = ref(false)
 
-// Replace with your Stripe publishable test key
 const STRIPE_KEY = import.meta.env.VITE_STRIPE_KEY || 'pk_test_REPLACE_WITH_YOUR_KEY'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 let stripe, cardElement
 
@@ -139,33 +139,62 @@ async function placeOrder() {
     toastStore.show('Please fill in all address fields.', 'warning')
     return
   }
+
   processing.value = true
+  cardError.value = ''
 
   try {
-    // Simulate PaymentIntent + confirm (replace with real backend in production)
-    // For demo: just confirm with test card
-    const { error, paymentIntent } = await stripe.createPaymentMethod({
-      type: 'card',
-      card: cardElement
+    // Call real backend to create a PaymentIntent
+    const res = await fetch(`${API_URL}/create-payment-intent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount: Math.round(cartStore.total * 100), // Stripe needs cents
+        currency: 'usd'
+      })
+    })
+
+    if (!res.ok) {
+      throw new Error('Failed to create payment intent')
+    }
+
+    const { clientSecret } = await res.json()
+
+    // Confirm the payment with the card details
+    const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+      payment_method: {
+        card: cardElement,
+        billing_details: {
+          name: `${form.value.firstName} ${form.value.lastName}`,
+          phone: form.value.phone
+        }
+      }
     })
 
     if (error) {
       cardError.value = error.message
-      processing.value = false
+      toastStore.show(error.message, 'danger')
       return
     }
 
-    // Mock successful payment – save order
-    authStore.addOrder({
-      items: cartStore.items,
-      total: cartStore.total,
-      address: `${form.value.firstName} ${form.value.lastName}, ${form.value.address}, ${form.value.city}`,
-      paymentMethod: paymentIntent.id
-    })
+    if (paymentIntent.status === 'succeeded') {
+      // Save order to auth store
+      authStore.addOrder({
+        items: cartStore.items,
+        total: cartStore.total,
+        address: `${form.value.firstName} ${form.value.lastName}, ${form.value.address}, ${form.value.city}`,
+        phone: form.value.phone,
+        paymentMethod: paymentIntent.id,
+        date: new Date().toISOString()
+      })
 
-    cartStore.clear()
-    router.push({ name: 'OrderSuccess' })
-  } catch {
+      cartStore.clear()
+      toastStore.show('Payment successful! 🎉', 'success')
+      router.push({ name: 'OrderSuccess' })
+    }
+
+  } catch (err) {
+    console.error('Payment error:', err)
     toastStore.show('Payment failed. Please try again.', 'danger')
   } finally {
     processing.value = false
