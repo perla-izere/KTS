@@ -13,8 +13,10 @@
     "bootstrap": "^5.3.3",
     "bootstrap-icons": "^1.11.3",
     "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "pinia": "^2.1.7",
+    "stripe": "^22.1.0",
     "vue": "^3.4.0",
     "vue-router": "^4.3.0"
   },
